@@ -111,6 +111,6 @@ trait Localization
 			}
 		}
 
-		return "document.documentElement.lang = '{$sLanguage}';\nrl.I18N={$sResult};\nrl.relativeTime = {$sTimeFormat};";
+		return "document.documentElement.lang = '{$sLanguage}';\nif(typeof rl!=='undefined'){rl.I18N={$sResult};rl.relativeTime={$sTimeFormat};}else{setTimeout(function(){if(typeof rl!=='undefined'){rl.I18N={$sResult};rl.relativeTime={$sTimeFormat};}},100);}";
 	}
 }
