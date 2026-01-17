@@ -7,9 +7,9 @@
 		<!-- ko text: submitErrorAdditional --><!-- /ko -->
 	</p>
 </div>
-<form action="#/"  spellcheck="false" method="POST"
+<form action="#/"  spellcheck="false" method="POST" 
 	data-bind="submit: submitForm, css: {'errorAnimated': formError, 'submitting': submitRequest()}">
-	<div class="controls" data-bind="css: {'error': emailError}">
+	<!--<div class="controls" data-bind="css: {'error': emailError}">
 		<span class="fontastic">✉</span>
 		<input name="Email" required="" type="text" class="input-block-level" pattern="[^@\s]+(@[^\s]+)?" inputmode="email"
 			autofocus="" autocomplete="email" autocorrect="off" autocapitalize="off"
@@ -22,9 +22,9 @@
 			autocomplete="current-password" autocorrect="off" autocapitalize="off"
 			data-bind="textInput: password, disable: submitRequest"
 			data-i18n="[placeholder]GLOBAL/PASSWORD">
-	</div>
+	</div>-->
 	<div id="plugin-Login-BottomControlGroup"></div>
-	<div class="controls" style="display: flex">
+	<!--<div class="controls" style="display: flex">
 		<div class="e-checkbox" tabindex="0" data-bind="toggle: signMe">
 			<i role="checkbox" class="fontastic" data-bind="text: signMe() ? '☑' : '☐'"></i>
 			<span data-i18n="LOGIN/LABEL_SIGN_ME"></span>
@@ -41,5 +41,5 @@
 		<button class="btn btn-large buttonLogin"
 			data-bind="command: submitCommand"
 			data-i18n="LOGIN/BUTTON_SIGN_IN"></button>
-	</div>
+	</div>-->
 </form>

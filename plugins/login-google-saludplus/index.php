@@ -24,6 +24,9 @@ class LoginGoogleSaludPlusPlugin extends \RainLoop\Plugins\AbstractPlugin
 		LOGIN_URI = 'https://accounts.google.com/o/oauth2/auth',
 		TOKEN_URI = 'https://accounts.google.com/o/oauth2/token';
 
+	// Activar logs de debug (cambiar a true para troubleshooting)
+	const DEBUG_LOG = false;
+
 	private static ?array $auth = null;
 	private static bool $isOAuthLogin = false;
 
@@ -120,16 +123,18 @@ class LoginGoogleSaludPlusPlugin extends \RainLoop\Plugins\AbstractPlugin
 			}
 
 		// Buscar las credenciales mapeadas
-		$oActions->Logger()->Write('[GoogleSaludPlus] Buscando mapping para: ' . $aUserInfo['email'], \LOG_ERR);
+		if (self::DEBUG_LOG) {
+			$oActions->Logger()->Write('[GoogleSaludPlus] Buscando mapping para: ' . $aUserInfo['email'], \LOG_ERR);
+		}
 		$aMappedCredentials = $this->getMappedCredentials($aUserInfo['email']);
 		if (!$aMappedCredentials) {
-			$oActions->Logger()->Write('[GoogleSaludPlus] NO se encontró mapping para: ' . $aUserInfo['email'], \LOG_ERR);
+			$oActions->Logger()->Write('[GoogleSaludPlus] ERROR: No se encontró mapping para: ' . $aUserInfo['email'], \LOG_ERR);
 			throw new \RuntimeException('No se encontró mapeo de credenciales para este email: ' . $aUserInfo['email']);
 		}
 
-		$oActions->Logger()->Write('[GoogleSaludPlus] Mapping encontrado. Email destino: ' . $aMappedCredentials['email'], \LOG_ERR);
-		$oActions->Logger()->Write('[GoogleSaludPlus] Password length: ' . \strlen($aMappedCredentials['password']) . ' caracteres', \LOG_ERR);
-		$oActions->Logger()->Write('[GoogleSaludPlus] Password (DEBUG): ' . $aMappedCredentials['password'], \LOG_ERR);
+		if (self::DEBUG_LOG) {
+			$oActions->Logger()->Write('[GoogleSaludPlus] Mapping encontrado. Email destino: ' . $aMappedCredentials['email'], \LOG_ERR);
+		}
 
 		static::$auth = [
 			'email' => $aUserInfo['email'],
@@ -141,19 +146,26 @@ class LoginGoogleSaludPlusPlugin extends \RainLoop\Plugins\AbstractPlugin
 
 		// Login con las credenciales mapeadas
 		$oPassword = new \SnappyMail\SensitiveString($aMappedCredentials['password']);
-		$oActions->Logger()->Write('[GoogleSaludPlus] Intentando login con: ' . $aMappedCredentials['email'], \LOG_ERR);
-		$oActions->Logger()->Write('[GoogleSaludPlus] Credenciales completas - Email: ' . $aMappedCredentials['email'] . ' | Pass: ' . $aMappedCredentials['password'], \LOG_ERR);
+		
+		if (self::DEBUG_LOG) {
+			$oActions->Logger()->Write('[GoogleSaludPlus] Intentando login con: ' . $aMappedCredentials['email'], \LOG_ERR);
+		}
 		
 		// Duplicar lógica de LoginProcess pero guardar token ANTES de imapConnect
 		// para evitar que InvalidToken del hook search-filters interrumpa el flujo
-		$oActions->Logger()->Write('[GoogleSaludPlus] Creando cuenta manualmente', \LOG_ERR);
+		if (self::DEBUG_LOG) {
+			$oActions->Logger()->Write('[GoogleSaludPlus] Creando cuenta manualmente', \LOG_ERR);
+		}
 		
 		// Usar reflexión para llamar a resolveLoginCredentials (es protected)
 		$reflection = new \ReflectionClass($oActions);
 		$method = $reflection->getMethod('resolveLoginCredentials');
 		$method->setAccessible(true);
 		$aCredentials = $method->invoke($oActions, $aMappedCredentials['email'], $oPassword);
-		$oActions->Logger()->Write('[GoogleSaludPlus] Credenciales resueltas', \LOG_ERR);
+		
+		if (self::DEBUG_LOG) {
+			$oActions->Logger()->Write('[GoogleSaludPlus] Credenciales resueltas', \LOG_ERR);
+		}
 		
 		// Crear cuenta
 		$oAccount = new \RainLoop\Model\MainAccount();
@@ -164,7 +176,10 @@ class LoginGoogleSaludPlusPlugin extends \RainLoop\Plugins\AbstractPlugin
 			$aCredentials['pass'],
 			$aCredentials['smtpUser']
 		);
-		$oActions->Logger()->Write('[GoogleSaludPlus] Account creada', \LOG_ERR);
+		
+		if (self::DEBUG_LOG) {
+			$oActions->Logger()->Write('[GoogleSaludPlus] Account creada', \LOG_ERR);
+		}
 		
 		// Ejecutar hook filter.account
 		$oActions->Plugins()->RunHook('filter.account', array($oAccount));
@@ -175,22 +190,32 @@ class LoginGoogleSaludPlusPlugin extends \RainLoop\Plugins\AbstractPlugin
 		// GUARDAR TOKEN ANTES de conectar IMAP (esto es la clave)
 		$oActions->StorageProvider()->Put($oAccount, StorageType::SESSION, \RainLoop\Utils::GetSessionToken(), 'true');
 		$oActions->SetMainAuthAccount($oAccount);
-		$oActions->Logger()->Write('[GoogleSaludPlus] Token guardado ANTES de IMAP', \LOG_ERR);
+		
+		if (self::DEBUG_LOG) {
+			$oActions->Logger()->Write('[GoogleSaludPlus] Token guardado ANTES de IMAP', \LOG_ERR);
+		}
 		
 		// Ahora conectar IMAP usando reflexión (es protected)
 		try {
-			$oActions->Logger()->Write('[GoogleSaludPlus] Conectando IMAP', \LOG_ERR);
+			if (self::DEBUG_LOG) {
+				$oActions->Logger()->Write('[GoogleSaludPlus] Conectando IMAP', \LOG_ERR);
+			}
 			$reflection = new \ReflectionClass($oActions);
 			$imapMethod = $reflection->getMethod('imapConnect');
 			$imapMethod->setAccessible(true);
 			$imapMethod->invoke($oActions, $oAccount, true);
-			$oActions->Logger()->Write('[GoogleSaludPlus] IMAP conectado', \LOG_ERR);
+			
+			if (self::DEBUG_LOG) {
+				$oActions->Logger()->Write('[GoogleSaludPlus] IMAP conectado', \LOG_ERR);
+			}
 		} catch (\RainLoop\Exceptions\ClientException $e) {
 			// InvalidToken[101] viene del hook search-filters - ignorarlo
 			if (101 === $e->getCode()) {
-				$oActions->Logger()->Write('[GoogleSaludPlus] InvalidToken[101] ignorado - hook search-filters', \LOG_ERR);
+				if (self::DEBUG_LOG) {
+					$oActions->Logger()->Write('[GoogleSaludPlus] InvalidToken[101] ignorado - hook search-filters', \LOG_ERR);
+				}
 			} else {
-				$oActions->Logger()->Write('[GoogleSaludPlus] ERROR IMAP real: ' . $e->getMessage(), \LOG_ERR);
+				$oActions->Logger()->Write('[GoogleSaludPlus] ERROR IMAP: ' . $e->getMessage(), \LOG_ERR);
 				throw $e;
 			}
 		}
@@ -198,12 +223,10 @@ class LoginGoogleSaludPlusPlugin extends \RainLoop\Plugins\AbstractPlugin
 		// Ejecutar hook login.success
 		$oActions->Plugins()->RunHook('login.success', array($oAccount));
 		$oActions->SetAuthToken($oAccount);
-		$oActions->Logger()->Write('[GoogleSaludPlus] Login completado', \LOG_ERR);
 		
-		// Guardar información del login OAuth en la sesión
-		// Nota: No guardamos info OAuth porque no la necesitamos (no usamos tokens OAuth para IMAP/SMTP)
-		// Solo usamos OAuth para obtener el email y luego login tradicional
-		$oActions->Logger()->Write('[GoogleSaludPlus] Login completado exitosamente', \LOG_ERR);
+		if (self::DEBUG_LOG) {
+			$oActions->Logger()->Write('[GoogleSaludPlus] Login completado exitosamente', \LOG_ERR);
+		}
 	}
 	catch (\Exception $oException)
 	{
@@ -225,15 +248,22 @@ class LoginGoogleSaludPlusPlugin extends \RainLoop\Plugins\AbstractPlugin
 		$oActions = \RainLoop\Api::Actions();
 		$sMapping = \trim($this->Config()->Get('plugin', 'email_mapping', ''));
 		
-		$oActions->Logger()->Write('[GoogleSaludPlus] Mapping config length: ' . \strlen($sMapping), \LOG_ERR);
+		if (self::DEBUG_LOG) {
+			$oActions->Logger()->Write('[GoogleSaludPlus] Mapping config length: ' . \strlen($sMapping), \LOG_ERR);
+		}
 		
 		if (empty($sMapping)) {
-			$oActions->Logger()->Write('[GoogleSaludPlus] Mapping vacío', \LOG_ERR);
+			if (self::DEBUG_LOG) {
+				$oActions->Logger()->Write('[GoogleSaludPlus] Mapping vacío', \LOG_ERR);
+			}
 			return null;
 		}
 
 		$aLines = \explode("\n", \preg_replace('/[\r\n\t]+/', "\n", $sMapping));
-		$oActions->Logger()->Write('[GoogleSaludPlus] Líneas de mapping: ' . \count($aLines), \LOG_ERR);
+		
+		if (self::DEBUG_LOG) {
+			$oActions->Logger()->Write('[GoogleSaludPlus] Líneas de mapping: ' . \count($aLines), \LOG_ERR);
+		}
 		
 		foreach ($aLines as $iIndex => $sLine) {
 			$sLine = \trim($sLine);
@@ -241,20 +271,29 @@ class LoginGoogleSaludPlusPlugin extends \RainLoop\Plugins\AbstractPlugin
 				continue;
 			}
 			
-			$oActions->Logger()->Write('[GoogleSaludPlus] Procesando línea ' . $iIndex . ': ' . \substr($sLine, 0, 50) . '...', \LOG_ERR);
+			if (self::DEBUG_LOG) {
+				$oActions->Logger()->Write('[GoogleSaludPlus] Procesando línea ' . $iIndex . ': ' . \substr($sLine, 0, 50) . '...', \LOG_ERR);
+			}
 			
 			$aData = \explode(':', $sLine, 3);
-			$oActions->Logger()->Write('[GoogleSaludPlus] Partes encontradas: ' . \count($aData), \LOG_ERR);
+			
+			if (self::DEBUG_LOG) {
+				$oActions->Logger()->Write('[GoogleSaludPlus] Partes encontradas: ' . \count($aData), \LOG_ERR);
+			}
 			
 			if (\is_array($aData) && \count($aData) === 3) {
 				$sMapGoogleEmail = \trim($aData[0]);
 				$sMapDestEmail = \trim($aData[1]);
 				$sMapPassword = \trim($aData[2]);
 				
-				$oActions->Logger()->Write('[GoogleSaludPlus] Comparando "' . $sMapGoogleEmail . '" con "' . $sGoogleEmail . '"', \LOG_ERR);
+				if (self::DEBUG_LOG) {
+					$oActions->Logger()->Write('[GoogleSaludPlus] Comparando "' . $sMapGoogleEmail . '" con "' . $sGoogleEmail . '"', \LOG_ERR);
+				}
 				
 				if (\strcasecmp($sMapGoogleEmail, $sGoogleEmail) === 0) {
-					$oActions->Logger()->Write('[GoogleSaludPlus] ¡Match encontrado!', \LOG_ERR);
+					if (self::DEBUG_LOG) {
+						$oActions->Logger()->Write('[GoogleSaludPlus] ¡Match encontrado!', \LOG_ERR);
+					}
 					return [
 						'email' => $sMapDestEmail,
 						'password' => $sMapPassword
@@ -263,7 +302,9 @@ class LoginGoogleSaludPlusPlugin extends \RainLoop\Plugins\AbstractPlugin
 			}
 		}
 
-		$oActions->Logger()->Write('[GoogleSaludPlus] No se encontró match para: ' . $sGoogleEmail, \LOG_ERR);
+		if (self::DEBUG_LOG) {
+			$oActions->Logger()->Write('[GoogleSaludPlus] No se encontró match para: ' . $sGoogleEmail, \LOG_ERR);
+		}
 		return null;
 	}
 
