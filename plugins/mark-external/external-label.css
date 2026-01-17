@@ -1,0 +1,25 @@
+/* 
+ * Estilos para badge "Externo" - estilos exactos de Gmail/Google
+ */
+
+/* Badge "Externo" en la vista del mensaje */
+.external-badge {
+	display: inline-block;
+	background-color: rgb(251, 188, 4);
+	border-radius: 200px;
+	color: rgb(32, 33, 36);
+	font-size: 12px;
+	font-weight: 400;
+	letter-spacing: .3px;
+	line-height: 16px;
+	margin: 0 8px 0 0;
+	padding: 2px 8px;
+	cursor: default;
+	user-select: none;
+}
+
+/* Asegurar que el container no afecte el layout */
+.external-badge-container {
+	display: inline-block;
+	vertical-align: middle;
+}
