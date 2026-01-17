@@ -159,13 +159,14 @@ class AvatarsPlugin extends \RainLoop\Plugins\AbstractPlugin
 					->SetDefaultValue([
 						['id' => '', 'name' => 'Name characters else silhouette'],
 						['id' => 'identicon', 'name' => 'Name characters else squares'],
-						['id' => 'jdenticon', 'name' => 'Triangles shape']
+						['id' => 'jdenticon', 'name' => 'Triangles shape'],
+						['id' => 'google-avatar', 'name' => 'Google Avatar']
 					])
 					->SetDescription('https://wikipedia.org/wiki/Identicon')
 				: \RainLoop\Plugins\Property::NewInstance('identicon')->SetLabel('Identicon')
 					->SetType(\RainLoop\Enumerations\PluginPropertyType::SELECTION)
-					->SetDefaultValue(['','identicon','jdenticon'])
-					->SetDescription('empty = default, identicon = squares, jdenticon = Triangles shape')
+					->SetDefaultValue(['','identicon','jdenticon','google-avatar'])
+					->SetDescription('empty = default, identicon = squares, jdenticon = Triangles shape, google-avatar = Google Avatar colors')
 				,
 			\RainLoop\Plugins\Property::NewInstance('service')->SetLabel('Preload valid domain icons')
 				->SetType(\RainLoop\Enumerations\PluginPropertyType::BOOL)
