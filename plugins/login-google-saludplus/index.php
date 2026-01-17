@@ -33,6 +33,7 @@ class LoginGoogleSaludPlusPlugin extends \RainLoop\Plugins\AbstractPlugin
 	public function Init() : void
 	{
 		$this->UseLangs(true);
+		$this->addCss('google-button.css');
 		$this->addJs('LoginOAuth2.js');
 		
 		// NO necesitamos el hook login.credentials porque las credenciales
