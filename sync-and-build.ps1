@@ -57,6 +57,16 @@ if (Test-Path $sourceDir) {
     Write-Host "  mark-external sincronizado" -ForegroundColor Green
 }
 
+# Sincronizar ai-overview
+$pluginName = "ai-overview"
+$sourceDir = "plugins\$pluginName"
+$targetDir = "data\_data_\_default_\plugins\$pluginName"
+if (Test-Path $sourceDir) {
+    if (-not (Test-Path $targetDir)) { New-Item -ItemType Directory -Path $targetDir -Force | Out-Null }
+    Copy-Item -Path "$sourceDir\*" -Destination $targetDir -Recurse -Force
+    Write-Host "  ai-overview sincronizado" -ForegroundColor Green
+}
+
 # 3. Recompilar proyecto
 Write-Host "[3/3] Recompilando proyecto..." -ForegroundColor Yellow
 $gulpCheck = Get-Command npx -ErrorAction SilentlyContinue

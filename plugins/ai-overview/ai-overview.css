@@ -1,0 +1,202 @@
+/* AI Overview - Estilos similares a Gmail */
+
+.b-message .ai-overview-container {
+	background-color: #f0f4f9;
+	border: 1px solid #dadce0;
+	border-radius: 8px;
+	margin: 16px 20px;
+	overflow: visible;
+	box-shadow: 0 1px 2px 0 rgba(60,64,67,0.3), 0 1px 3px 1px rgba(60,64,67,0.15);
+}
+
+/* Header */
+.ai-overview-header {
+	display: flex;
+	align-items: center;
+	padding: 14px 16px;
+	background-color: #f1f3f4;
+	cursor: pointer;
+	user-select: none;
+	transition: background-color 0.2s;
+}
+
+.ai-overview-header:hover {
+	background-color: #e8eaed;
+}
+
+.ai-overview-icon {
+	font-size: 18px;
+	margin-right: 10px;
+	line-height: 1;
+}
+
+.ai-overview-title {
+	font-size: 14px;
+	font-weight: 500;
+	color: #3c4043;
+	flex: 1;
+	font-family: 'Google Sans', 'Product Sans', Roboto, Arial, sans-serif;
+}
+
+.ai-overview-toggle {
+	background: none;
+	border: none;
+	font-size: 16px;
+	color: #5f6368;
+	cursor: pointer;
+	padding: 4px 8px;
+	line-height: 1;
+	transition: color 0.2s;
+}
+
+.ai-overview-toggle:hover {
+	color: #202124;
+}
+
+.ai-overview-container.collapsed .ai-overview-content {
+	display: none;
+}
+
+/* Content */
+.ai-overview-content {
+	padding: 16px;
+	background-color: #f1f3f4;
+	overflow: visible;
+	word-wrap: break-word;
+}
+
+/* Loading */
+.ai-overview-loading {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	color: #5f6368;
+	font-size: 14px;
+	padding: 8px 0;
+}
+
+.ai-overview-loading .spinner {
+	width: 20px;
+	height: 20px;
+	border: 3px solid #e8eaed;
+	border-top-color: #1a73e8;
+	border-radius: 50%;
+	animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+	to { transform: rotate(360deg); }
+}
+
+/* Bullets list */
+.ai-overview-bullets {
+	margin: 0;
+	padding: 0 0 0 20px;
+	list-style-type: disc;
+	overflow: visible;
+	word-wrap: break-word;
+}
+
+.ai-overview-bullets li {
+	color: #3c4043;
+	font-size: 14px;
+	line-height: 20px;
+	margin-bottom: 8px;
+	font-family: Roboto, Arial, sans-serif;
+	overflow: visible;
+	word-wrap: break-word;
+	white-space: normal;
+}
+
+.ai-overview-bullets li:last-child {
+	margin-bottom: 0;
+}
+
+.ai-overview-bullets li strong {
+	color: #202124;
+	font-weight: 500;
+}
+
+/* Error */
+.ai-overview-error {
+	color: #d93025;
+	font-size: 14px;
+	padding: 8px 12px;
+	background-color: #fce8e6;
+	border-radius: 4px;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+	.ai-overview-container {
+		margin: 12px 0;
+	}
+
+	.ai-overview-header {
+		padding: 10px 12px;
+	}
+
+	.ai-overview-content {
+		padding: 12px;
+	}
+
+	.ai-summary-text {
+		font-size: 13px;
+	}
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+	.ai-overview-container {
+		background-color: #2d2e30;
+		border-color: #3c4043;
+	}
+
+	.ai-overview-header {
+		background-color: #292a2d;
+		border-bottom-color: #3c4043;
+	}
+
+	.ai-overview-header:hover {
+		background-color: #35363a;
+	}
+
+	.ai-overview-title {
+		color: #e8eaed;
+	}
+
+	.ai-overview-toggle {
+		color: #9aa0a6;
+	}
+
+	.ai-overview-toggle:hover {
+		color: #e8eaed;
+	}
+
+	.ai-overview-content {
+		background-color: #292a2d;
+	}
+
+	.ai-overview-loading {
+		color: #9aa0a6;
+	}
+
+	.spinner {
+		border-color: #3c4043;
+		border-top-color: #8ab4f8;
+	}
+
+	.ai-summary-badge {
+		background-color: #1e3a5f;
+		color: #8ab4f8;
+	}
+
+	.ai-summary-text {
+		color: #e8eaed;
+	}
+
+	.ai-overview-error {
+		color: #f28b82;
+		background-color: #3b2426;
+	}
+}
