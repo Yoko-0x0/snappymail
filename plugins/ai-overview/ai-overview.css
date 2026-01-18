@@ -1,23 +1,24 @@
 /* AI Overview - Estilos similares a Gmail */
 
 .b-message .ai-overview-container {
-	background-color: #f0f4f9;
-	border: 1px solid #dadce0;
+	background-color: #f0f4f9; 
 	border-radius: 8px;
 	margin: 16px 20px;
-	overflow: visible;
-	box-shadow: 0 1px 2px 0 rgba(60,64,67,0.3), 0 1px 3px 1px rgba(60,64,67,0.15);
+	overflow: visible !important;
+	max-height: none !important;
+	height: auto !important;
 }
 
 /* Header */
 .ai-overview-header {
 	display: flex;
 	align-items: center;
-	padding: 14px 16px;
-	background-color: #f1f3f4;
+	padding: 6px 14px;
+	background-color: #f0f4f9;
 	cursor: pointer;
 	user-select: none;
 	transition: background-color 0.2s;
+	border-radius: 8px 8px 8px 8px;
 }
 
 .ai-overview-header:hover {
@@ -39,8 +40,10 @@
 }
 
 .ai-overview-toggle {
-	background: none;
-	border: none;
+	background: none !important;
+	border: none !important;
+	outline: none !important;
+	box-shadow: none !important;
 	font-size: 16px;
 	color: #5f6368;
 	cursor: pointer;
@@ -51,6 +54,10 @@
 
 .ai-overview-toggle:hover {
 	color: #202124;
+	background: none !important;
+	border: none !important;
+	outline: none !important;
+	box-shadow: none !important;
 }
 
 .ai-overview-container.collapsed .ai-overview-content {
@@ -59,10 +66,13 @@
 
 /* Content */
 .ai-overview-content {
-	padding: 16px;
-	background-color: #f1f3f4;
-	overflow: visible;
+	padding: 8px 16px 16px 16px;
+	background-color: #f0f4f9;
+	overflow: visible !important;
 	word-wrap: break-word;
+	border-radius: 0 0 8px 8px;
+	max-height: none !important;
+	height: auto !important;
 }
 
 /* Loading */
@@ -93,15 +103,17 @@
 	margin: 0;
 	padding: 0 0 0 20px;
 	list-style-type: disc;
-	overflow: visible;
+	overflow: visible !important;
 	word-wrap: break-word;
+	max-height: none !important;
+	height: auto !important;
 }
 
 .ai-overview-bullets li {
 	color: #3c4043;
 	font-size: 14px;
 	line-height: 20px;
-	margin-bottom: 8px;
+	margin-bottom: 4px;
 	font-family: Roboto, Arial, sans-serif;
 	overflow: visible;
 	word-wrap: break-word;
@@ -133,7 +145,7 @@
 	}
 
 	.ai-overview-header {
-		padding: 10px 12px;
+		padding: 6px 8px;
 	}
 
 	.ai-overview-content {
@@ -143,8 +155,15 @@
 	.ai-summary-text {
 		font-size: 13px;
 	}
+
+ 
 }
 
+div.ai-overview-header  > button{
+	border: none !important;
+	outline: none !important;
+	box-shadow: none !important;
+}
 /* Dark mode support */
 @media (prefers-color-scheme: dark) {
 	.ai-overview-container {
@@ -167,10 +186,18 @@
 
 	.ai-overview-toggle {
 		color: #9aa0a6;
+		background: none !important;
+		border: none !important;
+		outline: none !important;
+		box-shadow: none !important;
 	}
 
 	.ai-overview-toggle:hover {
 		color: #e8eaed;
+		background: none !important;
+		border: none !important;
+		outline: none !important;
+		box-shadow: none !important;
 	}
 
 	.ai-overview-content {
