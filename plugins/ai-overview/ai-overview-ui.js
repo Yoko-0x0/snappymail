@@ -22,7 +22,7 @@
 
 			// Insertar el panel AI Overview después del header
 			messageItemHeader.after(Element.fromHTML(`
-				<div class="ai-overview-container" data-bind="visible: message" style="display:none;">
+				<div class="ai-overview-container" style="display:none !important;">
 					<div class="ai-overview-header">
 						<span class="ai-overview-icon">
 						<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-subtitles-ai"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M11.5 19h-5.5a3 3 0 0 1 -3 -3v-8a3 3 0 0 1 3 -3h12a3 3 0 0 1 3 3v4" /><path d="M7 15h5" /><path d="M17 12h-3" /><path d="M11 12h-1" /><path d="M19 22.5a4.75 4.75 0 0 1 3.5 -3.5a4.75 4.75 0 0 1 -3.5 -3.5a4.75 4.75 0 0 1 -3.5 3.5a4.75 4.75 0 0 1 3.5 3.5" /></svg>
@@ -45,7 +45,20 @@
 
 			// Solicitar resumen cuando se carga un mensaje
 			view.message.subscribe(msg => {
+				// Ocultar el panel inmediatamente al cambiar de mensaje
+				const container = document.querySelector('.ai-overview-container');
+				if (container) {
+					container.style.display = 'none';
+				}
+
 				if (msg) {
+					// Verificar PRIMERO si el mensaje tiene hilo antes de cargar el cuerpo
+					if (!hasThread(msg)) {
+						// No tiene hilo, no hacer nada más
+						console.log('AI Overview - Mensaje sin hilo, no se mostrará resumen');
+						return;
+					}
+
 					// Configurar toggle
 					setTimeout(() => {
 						setupToggle();
@@ -60,7 +73,7 @@
 						const htmlText = msg.html && typeof msg.html === 'function' ? msg.html() : (msg.html || '');
 
 						if (bodyElement || plainText || htmlText) {
-							// El cuerpo está disponible, solicitar resumen
+							// Ya verificamos que tiene hilo, ahora solicitar resumen
 							requestAiSummary(msg);
 						} else {
 							// Esperar un poco más y volver a intentar
@@ -75,6 +88,29 @@
 		}
 	});
 
+
+	/**
+	 * Verificar si el mensaje tiene hilo (es parte de una conversación)
+	 */
+	function hasThread(msg) {
+		// Obtener configuración del plugin
+		const minMessages = rl.pluginSettingsGet('ai-overview', 'min_messages') || 2;
+		
+		// Si minMessages es 1, siempre mostrar (se considera que tiene hilo)
+		if (minMessages === 1) {
+			return true;
+		}
+		
+		// Verificar si el mensaje tiene inReplyTo (indica que es parte de un hilo)
+		const inReplyTo = msg.inReplyTo && typeof msg.inReplyTo === 'function' ? msg.inReplyTo() : (msg.inReplyTo || '');
+		
+		// Verificar threads si está disponible
+		const threads = msg.threads && typeof msg.threads === 'function' ? msg.threads() : (msg.threads || []);
+		const threadCount = Array.isArray(threads) ? threads.length : 0;
+		
+		// Tiene hilo si tiene inReplyTo (es una respuesta) o tiene threads
+		return !!inReplyTo || threadCount >= minMessages;
+	}
 
 	/**
 	 * Solicitar resumen de IA
@@ -166,8 +202,9 @@
 			return;
 		}
 
-		// Mostrar contenedor y loading
+		// Mostrar contenedor y loading (solo si tiene hilo)
 		container.style.display = 'block';
+		container.style.setProperty('display', 'block', 'important');
 		if (loading) loading.style.display = 'flex';
 		if (bullets) bullets.style.display = 'none';
 		if (error) error.style.display = 'none';

@@ -7,6 +7,7 @@
 	overflow: visible !important;
 	max-height: none !important;
 	height: auto !important;
+	display: none !important;
 }
 
 /* Header */
