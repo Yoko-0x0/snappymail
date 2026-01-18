@@ -53,8 +53,22 @@ class AiOverviewPlugin extends \RainLoop\Plugins\AbstractPlugin
 				->SetLabel('Timeout (segundos)')
 				->SetType(\RainLoop\Enumerations\PluginPropertyType::INT)
 				->SetDescription('Timeout para la petición al webhook')
-				->SetDefaultValue(30)
+				->SetDefaultValue(30),
+			
+			\RainLoop\Plugins\Property::NewInstance('debug')
+				->SetLabel('Debug')
+				->SetType(\RainLoop\Enumerations\PluginPropertyType::BOOL)
+				->SetDescription('Activar logs de depuración')
+				->SetDefaultValue(false)
 		);
+	}
+
+	/**
+	 * Verificar si debug está activado
+	 */
+	private function isDebugEnabled() : bool
+	{
+		return (bool) $this->Config()->Get('plugin', 'debug', false);
 	}
 
 	/**
@@ -76,12 +90,16 @@ class AiOverviewPlugin extends \RainLoop\Plugins\AbstractPlugin
 
 		// Obtener información del mensaje desde el frontend
 		$sMessageData = $this->jsonParam('MessageData', '');
+		$sMessageId = $this->jsonParam('MessageId', '');
+		$iThreadCount = (int) $this->jsonParam('ThreadCount', 1);
 		
 		if (empty($sMessageData)) {
 			return $this->jsonResponse(__FUNCTION__, ['Error' => 'No se recibió información del mensaje']);
 		}
 
-		\SnappyMail\Log::info('AI_OVERVIEW', "Solicitando resumen - Datos recibidos: " . \strlen($sMessageData) . " caracteres");
+		if ($this->isDebugEnabled()) {
+			\SnappyMail\Log::info('AI_OVERVIEW', "Solicitando resumen - MessageId: {$sMessageId}, ThreadCount: {$iThreadCount}, Datos: " . \strlen($sMessageData) . " caracteres");
+		}
 
 		try {
 			// La información del mensaje ya viene del frontend
@@ -89,21 +107,29 @@ class AiOverviewPlugin extends \RainLoop\Plugins\AbstractPlugin
 			$sInformation = $sMessageData;
 
 			if (empty($sInformation)) {
-				\SnappyMail\Log::error('AI_OVERVIEW', "ERROR: Información del mensaje vacía");
+				if ($this->isDebugEnabled()) {
+					\SnappyMail\Log::error('AI_OVERVIEW', "ERROR: Información del mensaje vacía");
+				}
 				return $this->jsonResponse(__FUNCTION__, ['Error' => 'Información del mensaje vacía']);
 			}
 
-			\SnappyMail\Log::info('AI_OVERVIEW', "Información del mensaje recibida: " . \strlen($sInformation) . " caracteres");
+			if ($this->isDebugEnabled()) {
+				\SnappyMail\Log::info('AI_OVERVIEW', "Información del mensaje recibida: " . \strlen($sInformation) . " caracteres");
+			}
 
 			// Hacer petición al webhook
-			$sSummary = $this->requestAiSummary($sInformation);
+			$sSummary = $this->requestAiSummary($sInformation, $sMessageId, $iThreadCount);
 
 			if (empty($sSummary)) {
-				\SnappyMail\Log::error('AI_OVERVIEW', "requestAiSummary retornó vacío");
+				if ($this->isDebugEnabled()) {
+					\SnappyMail\Log::error('AI_OVERVIEW', "requestAiSummary retornó vacío");
+				}
 				return $this->jsonResponse(__FUNCTION__, ['Error' => 'No se pudo obtener el resumen']);
 			}
 
-			\SnappyMail\Log::info('AI_OVERVIEW', "Resumen obtenido exitosamente. Longitud: " . \strlen($sSummary) . " caracteres");
+			if ($this->isDebugEnabled()) {
+				\SnappyMail\Log::info('AI_OVERVIEW', "Resumen obtenido exitosamente. Longitud: " . \strlen($sSummary) . " caracteres");
+			}
 
 			return $this->jsonResponse(__FUNCTION__, [
 				'summary' => $sSummary,
@@ -111,7 +137,9 @@ class AiOverviewPlugin extends \RainLoop\Plugins\AbstractPlugin
 			]);
 
 		} catch (\Throwable $e) {
-			\SnappyMail\Log::error('AI_OVERVIEW', 'Error: ' . $e->getMessage());
+			if ($this->isDebugEnabled()) {
+				\SnappyMail\Log::error('AI_OVERVIEW', 'Error: ' . $e->getMessage());
+			}
 			$this->Manager()->WriteException((string) $e, \LOG_ERR);
 			return $this->jsonResponse(__FUNCTION__, ['Error' => 'Error al procesar: ' . $e->getMessage()]);
 		}
@@ -121,16 +149,19 @@ class AiOverviewPlugin extends \RainLoop\Plugins\AbstractPlugin
 	/**
 	 * Hacer petición al webhook de IA
 	 */
-	private function requestAiSummary($sInformation) : string
+	private function requestAiSummary($sInformation, $sMessageId = '', $iThreadCount = 1) : string
 	{
 		$sWebhookUrl = $this->Config()->Get('plugin', 'webhook_url', 'https://workflow.saludplus.co/webhook/AI-Overview');
 		$iTimeout = (int) $this->Config()->Get('plugin', 'timeout', 30);
 
-		\SnappyMail\Log::info('AI_OVERVIEW', "Enviando petición a: {$sWebhookUrl}");
+		if ($this->isDebugEnabled()) {
+			\SnappyMail\Log::info('AI_OVERVIEW', "Enviando petición a: {$sWebhookUrl}");
+		}
 
-		// Preparar el payload
+		// Preparar el payload con MessageId para cache
 		$aPayload = [
-			'information' => $sInformation
+			'information' => $sInformation,
+			'cache_id' => $sMessageId // ID único del mensaje (cada respuesta tiene su propio ID)
 		];
 		$sJsonPayload = \json_encode($aPayload);
 
@@ -153,58 +184,84 @@ class AiOverviewPlugin extends \RainLoop\Plugins\AbstractPlugin
 		\curl_close($ch);
 
 		if ($sError) {
-			\SnappyMail\Log::error('AI_OVERVIEW', "Error cURL: {$sError}");
+			if ($this->isDebugEnabled()) {
+				\SnappyMail\Log::error('AI_OVERVIEW', "Error cURL: {$sError}");
+			}
 			return '';
 		}
 
 		if ($iHttpCode !== 200) {
-			\SnappyMail\Log::error('AI_OVERVIEW', "HTTP Code: {$iHttpCode}, Response: {$sResponse}");
+			if ($this->isDebugEnabled()) {
+				\SnappyMail\Log::error('AI_OVERVIEW', "HTTP Code: {$iHttpCode}, Response: {$sResponse}");
+			}
 			return '';
 		}
 
-		\SnappyMail\Log::info('AI_OVERVIEW', "Respuesta recibida: " . \strlen($sResponse) . " caracteres");
-		\SnappyMail\Log::info('AI_OVERVIEW', "Respuesta raw (primeros 500 chars): " . \substr($sResponse, 0, 500));
+		if ($this->isDebugEnabled()) {
+			\SnappyMail\Log::info('AI_OVERVIEW', "Respuesta recibida: " . \strlen($sResponse) . " caracteres");
+			\SnappyMail\Log::info('AI_OVERVIEW', "Respuesta raw (primeros 500 chars): " . \substr($sResponse, 0, 500));
+		}
 
 		// Parsear respuesta
 		$aResponse = \json_decode($sResponse, true);
 		
 		if (\json_last_error() !== JSON_ERROR_NONE) {
-			\SnappyMail\Log::error('AI_OVERVIEW', "Error al parsear JSON: " . \json_last_error_msg());
+			if ($this->isDebugEnabled()) {
+				\SnappyMail\Log::error('AI_OVERVIEW', "Error al parsear JSON: " . \json_last_error_msg());
+			}
 			return '';
 		}
 		
-		\SnappyMail\Log::info('AI_OVERVIEW', "Tipo de respuesta parseada: " . \gettype($aResponse));
+		if ($this->isDebugEnabled()) {
+			\SnappyMail\Log::info('AI_OVERVIEW', "Tipo de respuesta parseada: " . \gettype($aResponse));
+		}
 		
 		// Si la respuesta es un array, tomar el primer elemento
 		if (\is_array($aResponse) && !empty($aResponse) && isset($aResponse[0])) {
 			if (\is_array($aResponse[0])) {
 				$aResponse = $aResponse[0];
-				\SnappyMail\Log::info('AI_OVERVIEW', "Respuesta es array, usando primer elemento");
+				if ($this->isDebugEnabled()) {
+					\SnappyMail\Log::info('AI_OVERVIEW', "Respuesta es array, usando primer elemento");
+				}
 			} else {
-				\SnappyMail\Log::info('AI_OVERVIEW', "Respuesta es array simple, primer elemento no es array");
+				if ($this->isDebugEnabled()) {
+					\SnappyMail\Log::info('AI_OVERVIEW', "Respuesta es array simple, primer elemento no es array");
+				}
 			}
 		}
 		
 		// Intentar diferentes estructuras de respuesta
 		if (\is_array($aResponse) && isset($aResponse['output'])) {
-			\SnappyMail\Log::info('AI_OVERVIEW', "Resumen encontrado en campo 'output'");
+			if ($this->isDebugEnabled()) {
+				\SnappyMail\Log::info('AI_OVERVIEW', "Resumen encontrado en campo 'output'");
+			}
 			return $aResponse['output'];
 		} elseif (\is_array($aResponse) && isset($aResponse['summary'])) {
-			\SnappyMail\Log::info('AI_OVERVIEW', "Resumen encontrado en campo 'summary'");
+			if ($this->isDebugEnabled()) {
+				\SnappyMail\Log::info('AI_OVERVIEW', "Resumen encontrado en campo 'summary'");
+			}
 			return $aResponse['summary'];
 		} elseif (\is_array($aResponse) && isset($aResponse['result'])) {
-			\SnappyMail\Log::info('AI_OVERVIEW', "Resumen encontrado en campo 'result'");
+			if ($this->isDebugEnabled()) {
+				\SnappyMail\Log::info('AI_OVERVIEW', "Resumen encontrado en campo 'result'");
+			}
 			return $aResponse['result'];
 		} elseif (\is_array($aResponse) && isset($aResponse['data'])) {
-			\SnappyMail\Log::info('AI_OVERVIEW', "Resumen encontrado en campo 'data'");
+			if ($this->isDebugEnabled()) {
+				\SnappyMail\Log::info('AI_OVERVIEW', "Resumen encontrado en campo 'data'");
+			}
 			return $aResponse['data'];
 		} elseif (\is_array($aResponse) && isset($aResponse['response'])) {
-			\SnappyMail\Log::info('AI_OVERVIEW', "Resumen encontrado en campo 'response'");
+			if ($this->isDebugEnabled()) {
+				\SnappyMail\Log::info('AI_OVERVIEW', "Resumen encontrado en campo 'response'");
+			}
 			return $aResponse['response'];
 		} else {
 			// Si la respuesta es solo un string o no se encontró campo
-			\SnappyMail\Log::warning('AI_OVERVIEW', "No se encontró campo de resumen. Tipo: " . \gettype($aResponse) . ", Keys: " . (\is_array($aResponse) ? \implode(', ', \array_keys($aResponse)) : 'N/A'));
-			\SnappyMail\Log::warning('AI_OVERVIEW', "Retornando respuesta completa");
+			if ($this->isDebugEnabled()) {
+				\SnappyMail\Log::warning('AI_OVERVIEW', "No se encontró campo de resumen. Tipo: " . \gettype($aResponse) . ", Keys: " . (\is_array($aResponse) ? \implode(', ', \array_keys($aResponse)) : 'N/A'));
+				\SnappyMail\Log::warning('AI_OVERVIEW', "Retornando respuesta completa");
+			}
 			return $sResponse;
 		}
 	}

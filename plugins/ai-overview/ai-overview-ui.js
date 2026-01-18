@@ -4,6 +4,13 @@
  */
 (rl => {
 	const templateId = 'MailMessageView';
+	
+	/**
+	 * Verificar si debug está activado
+	 */
+	function isDebugEnabled() {
+		return rl.pluginSettingsGet('ai-overview', 'debug') || false;
+	}
 
 	addEventListener('rl-view-model.create', e => {
 		if (templateId === e.detail.viewModelTemplateID) {
@@ -16,7 +23,9 @@
 			const messageItemHeader = template.content.querySelector('.messageItemHeader');
 			
 			if (!messageItemHeader) {
-				console.warn('AI Overview - No se encontró .messageItemHeader');
+				if (isDebugEnabled()) {
+					console.warn('AI Overview - No se encontró .messageItemHeader');
+				}
 				return;
 			}
 
@@ -41,7 +50,9 @@
 				</div>
 			`));
 
-			console.log('AI Overview - Panel agregado al template');
+			if (isDebugEnabled()) {
+				console.log('AI Overview - Panel agregado al template');
+			}
 
 			// Solicitar resumen cuando se carga un mensaje
 			view.message.subscribe(msg => {
@@ -55,7 +66,9 @@
 					// Verificar PRIMERO si el mensaje tiene hilo antes de cargar el cuerpo
 					if (!hasThread(msg)) {
 						// No tiene hilo, no hacer nada más
-						console.log('AI Overview - Mensaje sin hilo, no se mostrará resumen');
+						if (isDebugEnabled()) {
+							console.log('AI Overview - Mensaje sin hilo, no se mostrará resumen');
+						}
 						return;
 					}
 
@@ -125,6 +138,8 @@
 
 		// Recopilar información del mensaje desde el frontend
 		let messageData = '';
+		let messageId = '';
+		let threadCount = 1;
 		
 		try {
 			// Obtener información del mensaje
@@ -182,22 +197,69 @@
 			// Construir la información del mensaje
 			messageData = `De: ${from}\nAsunto: ${subject}\nFecha: ${date}\nContenido: ${body}`;
 			
-			console.log('AI Overview - Datos del mensaje recopilados:', {
-				from,
-				subject,
-				date,
-				bodyLength: body.length,
-				totalLength: messageData.length
-			});
+			// Obtener ID del mensaje y conteo del hilo
+			messageId = msg.hash || (msg.folder && msg.uid ? `${msg.folder}_${msg.uid}` : '');
+			
+			// Verificar threads - puede ser un observableArray de Knockout
+			const threads = msg.threads && typeof msg.threads === 'function' ? msg.threads() : (msg.threads || []);
+			const threadsLength = Array.isArray(threads) ? threads.length : 0;
+			
+			// Si tiene inReplyTo, sabemos que hay al menos 2 mensajes (original + respuesta)
+			const inReplyTo = msg.inReplyTo && typeof msg.inReplyTo === 'function' ? msg.inReplyTo() : (msg.inReplyTo || '');
+			
+			// threads contiene los UIDs de otros mensajes en el hilo
+			// El threadCount debe ser threads.length + 1 (para incluir el mensaje actual)
+			// Si threads está vacío pero tiene inReplyTo, es al menos 2
+			if (threadsLength > 0) {
+				// threads contiene otros mensajes, el total es threads.length + 1 (mensaje actual)
+				threadCount = threadsLength + 1;
+			} else if (inReplyTo) {
+				// Tiene respuesta pero threads no está poblado, asumir al menos 2
+				threadCount = 2;
+			} else {
+				// Si pasó hasThread() pero no hay datos, usar 1 (solo este mensaje)
+				threadCount = 1;
+			}
+			
+			if (isDebugEnabled()) {
+				console.log('AI Overview - Conteo de hilo:', {
+					messageId,
+					threadsLength,
+					threads: threads,
+					inReplyTo: !!inReplyTo,
+					threadCountCalculado: threadCount,
+					msgObject: {
+						hash: msg.hash,
+						folder: msg.folder,
+						uid: msg.uid,
+						hasThreadsFunction: typeof msg.threads === 'function',
+						threadsRaw: msg.threads
+					}
+				});
+				
+				console.log('AI Overview - Datos del mensaje recopilados:', {
+					from,
+					subject,
+					date,
+					bodyLength: body.length,
+					totalLength: messageData.length,
+					messageId,
+					threadCount
+				});
+			}
 			
 		} catch (err) {
-			console.error('AI Overview - Error al recopilar datos del mensaje:', err);
+			if (isDebugEnabled()) {
+				console.error('AI Overview - Error al recopilar datos del mensaje:', err);
+			}
 			showError(container, 'Error al obtener información del mensaje');
 			return;
 		}
 
 		if (!messageData || messageData.length < 10) {
-			console.warn('AI Overview - Datos del mensaje insuficientes');
+			if (isDebugEnabled()) {
+				console.warn('AI Overview - Datos del mensaje insuficientes');
+			}
 			showError(container, 'No se pudo obtener información suficiente del mensaje');
 			return;
 		}
@@ -210,37 +272,47 @@
 		if (error) error.style.display = 'none';
 
 		// Hacer petición al backend enviando los datos del mensaje
-		rl.pluginRemoteRequest(
-			(iError, oData) => {
-				if (iError) {
-					console.error('AI Overview - Error:', iError, oData);
-					showError(container, oData?.ErrorMessage || 'Error al obtener resumen');
-					return;
-				}
+			rl.pluginRemoteRequest(
+				(iError, oData) => {
+					if (iError) {
+						if (isDebugEnabled()) {
+							console.error('AI Overview - Error:', iError, oData);
+						}
+						showError(container, oData?.ErrorMessage || 'Error al obtener resumen');
+						return;
+					}
 
-				console.log('AI Overview - Respuesta:', oData);
-				console.log('AI Overview - Result:', oData?.Result);
+					if (isDebugEnabled()) {
+						console.log('AI Overview - Respuesta:', oData);
+						console.log('AI Overview - Result:', oData?.Result);
+					}
 
-				// Intentar diferentes estructuras de respuesta
-				if (oData?.Result?.summary) {
-					const summary = oData.Result.summary;
-					const messageCount = oData.Result.messageCount || 1;
-					showSummary(container, summary, messageCount);
-				} else if (oData?.Result?.Error) {
-					console.warn('AI Overview - Error del servidor:', oData.Result.Error);
-					showError(container, oData.Result.Error);
-				} else {
-					console.warn('AI Overview - Estructura de respuesta no reconocida:', {
-						hasResult: !!oData?.Result,
-						resultKeys: oData?.Result ? Object.keys(oData.Result) : [],
-						fullData: oData
-					});
-					showError(container, 'No se pudo obtener el resumen');
-				}
-			},
+					// Intentar diferentes estructuras de respuesta
+					if (oData?.Result?.summary) {
+						const summary = oData.Result.summary;
+						const messageCount = oData.Result.messageCount || 1;
+						showSummary(container, summary, messageCount);
+					} else if (oData?.Result?.Error) {
+						if (isDebugEnabled()) {
+							console.warn('AI Overview - Error del servidor:', oData.Result.Error);
+						}
+						showError(container, oData.Result.Error);
+					} else {
+						if (isDebugEnabled()) {
+							console.warn('AI Overview - Estructura de respuesta no reconocida:', {
+								hasResult: !!oData?.Result,
+								resultKeys: oData?.Result ? Object.keys(oData.Result) : [],
+								fullData: oData
+							});
+						}
+						showError(container, 'No se pudo obtener el resumen');
+					}
+				},
 			'AiOverview',
 			{
-				'MessageData': messageData
+				'MessageData': messageData,
+				'MessageId': messageId,
+				'ThreadCount': threadCount
 			},
 			60000 // 60 segundos de timeout
 		);
@@ -271,7 +343,9 @@
 			bullets.style.display = 'block';
 		}
 
-		console.log('AI Overview - Resumen mostrado:', messageCount, 'mensajes');
+		if (isDebugEnabled()) {
+			console.log('AI Overview - Resumen mostrado:', messageCount, 'mensajes');
+		}
 	}
 
 	/**
@@ -319,7 +393,9 @@
 			container.classList.toggle('collapsed', !isCollapsed);
 		});
 
-		console.log('AI Overview - Toggle configurado');
+		if (isDebugEnabled()) {
+			console.log('AI Overview - Toggle configurado');
+		}
 	}
 
 })(window.rl);
