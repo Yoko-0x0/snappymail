@@ -124,18 +124,14 @@ class LoginGoogleSaludPlusPlugin extends \RainLoop\Plugins\AbstractPlugin
 			}
 
 		// Buscar las credenciales mapeadas
-		if (self::DEBUG_LOG) {
-			$oActions->Logger()->Write('[GoogleSaludPlus] Buscando mapping para: ' . $aUserInfo['email'], \LOG_ERR);
-		}
+		$oActions->Logger()->Write('[GoogleSaludPlus] Buscando mapping para: ' . $aUserInfo['email'], \LOG_ERR);
 		$aMappedCredentials = $this->getMappedCredentials($aUserInfo['email']);
 		if (!$aMappedCredentials) {
 			$oActions->Logger()->Write('[GoogleSaludPlus] ERROR: No se encontró mapping para: ' . $aUserInfo['email'], \LOG_ERR);
 			throw new \RuntimeException('No se encontró mapeo de credenciales para este email: ' . $aUserInfo['email']);
 		}
 
-		if (self::DEBUG_LOG) {
-			$oActions->Logger()->Write('[GoogleSaludPlus] Mapping encontrado. Email destino: ' . $aMappedCredentials['email'], \LOG_ERR);
-		}
+		$oActions->Logger()->Write('[GoogleSaludPlus] Mapping encontrado. Email destino: ' . $aMappedCredentials['email'], \LOG_ERR);
 
 		static::$auth = [
 			'email' => $aUserInfo['email'],
@@ -243,69 +239,103 @@ class LoginGoogleSaludPlusPlugin extends \RainLoop\Plugins\AbstractPlugin
 
 	/**
 	 * Obtener las credenciales mapeadas para un email de Google
+	 * Lee desde el archivo saludplus-email-accouts.txt en el directorio data
 	 */
 	private function getMappedCredentials(string $sGoogleEmail) : ?array
 	{
 		$oActions = \RainLoop\Api::Actions();
-		$sMapping = \trim($this->Config()->Get('plugin', 'email_mapping', ''));
 		
-		if (self::DEBUG_LOG) {
-			$oActions->Logger()->Write('[GoogleSaludPlus] Mapping config length: ' . \strlen($sMapping), \LOG_ERR);
+		// Obtener la ruta del directorio data
+		$sDataPath = \defined('APP_DATA_FOLDER_PATH') 
+			? \rtrim(\APP_DATA_FOLDER_PATH, '\\/') 
+			: \rtrim(\dirname(__DIR__, 4) . '/data', '\\/');
+		
+		$sMappingFile = $sDataPath . '/saludplus-email-accouts.txt';
+		
+		$oActions->Logger()->Write('[GoogleSaludPlus] Buscando archivo de mapping: ' . $sMappingFile, \LOG_ERR);
+		$oActions->Logger()->Write('[GoogleSaludPlus] APP_DATA_FOLDER_PATH definido: ' . (\defined('APP_DATA_FOLDER_PATH') ? 'SI' : 'NO'), \LOG_ERR);
+		if (\defined('APP_DATA_FOLDER_PATH')) {
+			$oActions->Logger()->Write('[GoogleSaludPlus] APP_DATA_FOLDER_PATH = ' . \APP_DATA_FOLDER_PATH, \LOG_ERR);
+		}
+		$oActions->Logger()->Write('[GoogleSaludPlus] Ruta calculada: ' . $sDataPath, \LOG_ERR);
+		$oActions->Logger()->Write('[GoogleSaludPlus] Archivo completo: ' . $sMappingFile, \LOG_ERR);
+		$oActions->Logger()->Write('[GoogleSaludPlus] Archivo existe: ' . (\is_file($sMappingFile) ? 'SI' : 'NO'), \LOG_ERR);
+		$oActions->Logger()->Write('[GoogleSaludPlus] Archivo legible: ' . (\is_readable($sMappingFile) ? 'SI' : 'NO'), \LOG_ERR);
+		
+		// Verificar que el archivo existe
+		if (!\is_file($sMappingFile)) {
+			$oActions->Logger()->Write('[GoogleSaludPlus] ERROR: Archivo de mapping no encontrado: ' . $sMappingFile, \LOG_ERR);
+			return null;
 		}
 		
+		// Leer el contenido del archivo
+		$sMapping = \file_get_contents($sMappingFile);
+		if ($sMapping === false) {
+			$oActions->Logger()->Write('[GoogleSaludPlus] ERROR: No se pudo leer el archivo de mapping', \LOG_ERR);
+			return null;
+		}
+		
+		// Eliminar BOM (Byte Order Mark) si existe
+		$sMapping = \preg_replace('/^\xEF\xBB\xBF/', '', $sMapping);
+		$sMapping = \trim($sMapping);
+		
+		$oActions->Logger()->Write('[GoogleSaludPlus] Mapping file length: ' . \strlen($sMapping) . ' caracteres', \LOG_ERR);
+		$oActions->Logger()->Write('[GoogleSaludPlus] Primeros 200 caracteres del archivo: ' . \substr($sMapping, 0, 200), \LOG_ERR);
+		
 		if (empty($sMapping)) {
-			if (self::DEBUG_LOG) {
-				$oActions->Logger()->Write('[GoogleSaludPlus] Mapping vacío', \LOG_ERR);
-			}
+			$oActions->Logger()->Write('[GoogleSaludPlus] ERROR: Archivo de mapping vacío', \LOG_ERR);
 			return null;
 		}
 
 		$aLines = \explode("\n", \preg_replace('/[\r\n\t]+/', "\n", $sMapping));
 		
-		if (self::DEBUG_LOG) {
-			$oActions->Logger()->Write('[GoogleSaludPlus] Líneas de mapping: ' . \count($aLines), \LOG_ERR);
-		}
+		$oActions->Logger()->Write('[GoogleSaludPlus] Total de líneas en archivo: ' . \count($aLines), \LOG_ERR);
 		
 		foreach ($aLines as $iIndex => $sLine) {
 			$sLine = \trim($sLine);
-			if (empty($sLine)) {
+			
+			// Ignorar líneas vacías y comentarios
+			if (empty($sLine) || $sLine[0] === '#') {
+				$oActions->Logger()->Write('[GoogleSaludPlus] Línea ' . $iIndex . ' ignorada (vacía o comentario)', \LOG_ERR);
 				continue;
 			}
 			
-			if (self::DEBUG_LOG) {
-				$oActions->Logger()->Write('[GoogleSaludPlus] Procesando línea ' . $iIndex . ': ' . \substr($sLine, 0, 50) . '...', \LOG_ERR);
-			}
+			$oActions->Logger()->Write('[GoogleSaludPlus] Procesando línea ' . $iIndex . ': ' . \substr($sLine, 0, 80), \LOG_ERR);
 			
 			$aData = \explode(':', $sLine, 3);
 			
-			if (self::DEBUG_LOG) {
-				$oActions->Logger()->Write('[GoogleSaludPlus] Partes encontradas: ' . \count($aData), \LOG_ERR);
-			}
+			$oActions->Logger()->Write('[GoogleSaludPlus] Partes encontradas: ' . \count($aData), \LOG_ERR);
 			
 			if (\is_array($aData) && \count($aData) === 3) {
-				$sMapGoogleEmail = \trim($aData[0]);
-				$sMapDestEmail = \trim($aData[1]);
+				// Limpiar emails eliminando BOM y espacios
+				$sMapGoogleEmail = \preg_replace('/^\xEF\xBB\xBF/', '', \trim($aData[0]));
+				$sMapDestEmail = \preg_replace('/^\xEF\xBB\xBF/', '', \trim($aData[1]));
 				$sMapPassword = \trim($aData[2]);
 				
-				if (self::DEBUG_LOG) {
-					$oActions->Logger()->Write('[GoogleSaludPlus] Comparando "' . $sMapGoogleEmail . '" con "' . $sGoogleEmail . '"', \LOG_ERR);
-				}
+				// Limpiar también el email de entrada
+				$sCleanGoogleEmail = \preg_replace('/^\xEF\xBB\xBF/', '', \trim($sGoogleEmail));
 				
-				if (\strcasecmp($sMapGoogleEmail, $sGoogleEmail) === 0) {
-					if (self::DEBUG_LOG) {
-						$oActions->Logger()->Write('[GoogleSaludPlus] ¡Match encontrado!', \LOG_ERR);
-					}
+				$oActions->Logger()->Write('[GoogleSaludPlus] Email Google: "' . $sMapGoogleEmail . '"', \LOG_ERR);
+				$oActions->Logger()->Write('[GoogleSaludPlus] Email destino: "' . $sMapDestEmail . '"', \LOG_ERR);
+				$oActions->Logger()->Write('[GoogleSaludPlus] Password length: ' . \strlen($sMapPassword), \LOG_ERR);
+				$oActions->Logger()->Write('[GoogleSaludPlus] Comparando "' . $sMapGoogleEmail . '" con "' . $sCleanGoogleEmail . '"', \LOG_ERR);
+				$oActions->Logger()->Write('[GoogleSaludPlus] strcasecmp resultado: ' . \strcasecmp($sMapGoogleEmail, $sCleanGoogleEmail), \LOG_ERR);
+				
+				if (\strcasecmp($sMapGoogleEmail, $sCleanGoogleEmail) === 0) {
+					$oActions->Logger()->Write('[GoogleSaludPlus] ¡MATCH ENCONTRADO! Email destino: ' . $sMapDestEmail, \LOG_ERR);
 					return [
 						'email' => $sMapDestEmail,
 						'password' => $sMapPassword
 					];
+				} else {
+					$oActions->Logger()->Write('[GoogleSaludPlus] No coincide, continuando...', \LOG_ERR);
 				}
+			} else {
+				$oActions->Logger()->Write('[GoogleSaludPlus] ERROR: Línea ' . $iIndex . ' no tiene formato correcto (esperado: email:email:password)', \LOG_ERR);
 			}
 		}
 
-		if (self::DEBUG_LOG) {
-			$oActions->Logger()->Write('[GoogleSaludPlus] No se encontró match para: ' . $sGoogleEmail, \LOG_ERR);
-		}
+		$oActions->Logger()->Write('[GoogleSaludPlus] ERROR: No se encontró match para: ' . $sGoogleEmail, \LOG_ERR);
 		return null;
 	}
 
@@ -322,12 +352,6 @@ class LoginGoogleSaludPlusPlugin extends \RainLoop\Plugins\AbstractPlugin
 				->SetType(\RainLoop\Enumerations\PluginPropertyType::STRING)
 				->SetEncrypted()
 				->SetDescription('Google Cloud Console - OAuth 2.0 Client Secret'),
-			\RainLoop\Plugins\Property::NewInstance('email_mapping')
-				->SetLabel('Email Mapping')
-				->SetType(\RainLoop\Enumerations\PluginPropertyType::STRING_TEXT)
-				->SetDescription('Mapeo de credenciales (una por línea): email-google@saludplus.co:email-destino@dominio.com:password' . "\n" . 
-					'⚠️ ADVERTENCIA: Las contraseñas se guardan en texto plano. Asegure permisos restrictivos en el archivo de configuración.')
-				->SetDefaultValue("usuario@saludplus.co:usuario@servidor.com:password123"),
 			\RainLoop\Plugins\Property::NewInstance('hide_standard_login')
 				->SetLabel('Ocultar login estándar')
 				->SetType(\RainLoop\Enumerations\PluginPropertyType::BOOL)

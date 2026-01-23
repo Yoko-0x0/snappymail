@@ -44,6 +44,7 @@ import { MessageUserStore } from 'Stores/User/Message';
 import Remote from 'Remote/User/Fetch';
 
 import { LoginUserScreen } from 'Screen/User/Login';
+import { LoginLegacyScreen } from 'Screen/User/LoginLegacy';
 import { MailBoxUserScreen } from 'Screen/User/MailBox';
 import { SettingsUserScreen } from 'Screen/User/Settings';
 
@@ -235,7 +236,7 @@ export class AppUser extends AbstractApp {
 				}
 			});
 		} else {
-			startScreens([LoginUserScreen]);
+			startScreens([LoginUserScreen, LoginLegacyScreen]);
 		}
 	}
 
