@@ -1,5 +1,7 @@
 <?php
 
+use RainLoop\Providers\Storage\Enumerations\StorageType;
+
 class AiOverviewPlugin extends \RainLoop\Plugins\AbstractPlugin
 {
 	const
@@ -54,6 +56,12 @@ class AiOverviewPlugin extends \RainLoop\Plugins\AbstractPlugin
 				->SetType(\RainLoop\Enumerations\PluginPropertyType::INT)
 				->SetDescription('Timeout para la petición al webhook')
 				->SetDefaultValue(30),
+			
+			\RainLoop\Plugins\Property::NewInstance('use_cache')
+				->SetLabel('Usar Caché')
+				->SetType(\RainLoop\Enumerations\PluginPropertyType::BOOL)
+				->SetDescription('Activar/desactivar el uso de caché para los resúmenes. Si está desactivado, siempre se llamará al webhook.')
+				->SetDefaultValue(true),
 			
 			\RainLoop\Plugins\Property::NewInstance('debug')
 				->SetLabel('Debug')
@@ -117,23 +125,78 @@ class AiOverviewPlugin extends \RainLoop\Plugins\AbstractPlugin
 				\SnappyMail\Log::info('AI_OVERVIEW', "Información del mensaje recibida: " . \strlen($sInformation) . " caracteres");
 			}
 
-			// Hacer petición al webhook
-			$sSummary = $this->requestAiSummary($sInformation, $sMessageId, $iThreadCount);
-
-			if (empty($sSummary)) {
-				if ($this->isDebugEnabled()) {
-					\SnappyMail\Log::error('AI_OVERVIEW', "requestAiSummary retornó vacío");
+			// Verificar si el uso de caché está habilitado en la configuración
+			$bCacheEnabled = (bool) $this->Config()->Get('plugin', 'use_cache', true);
+			
+			// Generar clave única para la cache basada en MessageId y email del usuario
+			// Solo usar cache si está habilitado Y MessageId no está vacío
+			$bUseCache = $bCacheEnabled && !empty($sMessageId);
+			$sSummary = '';
+			$bFromCache = false;
+			
+			if ($bUseCache) {
+				$sCacheKey = $this->getCacheKey($oAccount, $sMessageId);
+				
+				// Intentar obtener desde cache primero
+				$sSummary = $this->getCachedSummary($oAccount, $sCacheKey);
+				$bFromCache = !empty($sSummary);
+				
+				if ($bFromCache) {
+					if ($this->isDebugEnabled()) {
+						\SnappyMail\Log::info('AI_OVERVIEW', "Resumen obtenido desde cache - MessageId: {$sMessageId}");
+					}
+				} else {
+					if ($this->isDebugEnabled()) {
+						\SnappyMail\Log::info('AI_OVERVIEW', "No se encontró en cache - MessageId: {$sMessageId}, llamando al webhook");
+					}
 				}
-				return $this->jsonResponse(__FUNCTION__, ['Error' => 'No se pudo obtener el resumen']);
+			} else {
+				if ($this->isDebugEnabled()) {
+					if (!$bCacheEnabled) {
+						\SnappyMail\Log::info('AI_OVERVIEW', "Caché deshabilitada en configuración, llamando directamente al webhook");
+					} else {
+						\SnappyMail\Log::info('AI_OVERVIEW', "MessageId vacío, no se usará cache, llamando directamente al webhook");
+					}
+				}
 			}
+			
+			// Si no está en cache o caché está deshabilitada o MessageId está vacío, hacer petición al webhook
+			if (!$bFromCache) {
+				$sSummary = $this->requestAiSummary($sInformation, $sMessageId, $iThreadCount);
 
-			if ($this->isDebugEnabled()) {
-				\SnappyMail\Log::info('AI_OVERVIEW', "Resumen obtenido exitosamente. Longitud: " . \strlen($sSummary) . " caracteres");
+				if (empty($sSummary)) {
+					if ($this->isDebugEnabled()) {
+						\SnappyMail\Log::error('AI_OVERVIEW', "requestAiSummary retornó vacío");
+					}
+					return $this->jsonResponse(__FUNCTION__, ['Error' => 'No se pudo obtener el resumen']);
+				}
+
+				// Guardar en cache solo si:
+				// 1. La caché está habilitada en configuración
+				// 2. MessageId no está vacío
+				// 3. Se obtuvo exitosamente el resumen
+				if ($bUseCache && !empty($sMessageId)) {
+					$sCacheKey = $this->getCacheKey($oAccount, $sMessageId);
+					$this->saveCachedSummary($oAccount, $sCacheKey, $sSummary);
+					
+					if ($this->isDebugEnabled()) {
+						\SnappyMail\Log::info('AI_OVERVIEW', "Resumen obtenido exitosamente y guardado en cache. Longitud: " . \strlen($sSummary) . " caracteres");
+					}
+				} else {
+					if ($this->isDebugEnabled()) {
+						if (!$bCacheEnabled) {
+							\SnappyMail\Log::info('AI_OVERVIEW', "Resumen obtenido exitosamente pero NO guardado en cache (caché deshabilitada). Longitud: " . \strlen($sSummary) . " caracteres");
+						} else {
+							\SnappyMail\Log::info('AI_OVERVIEW', "Resumen obtenido exitosamente pero NO guardado en cache (MessageId vacío). Longitud: " . \strlen($sSummary) . " caracteres");
+						}
+					}
+				}
 			}
 
 			return $this->jsonResponse(__FUNCTION__, [
 				'summary' => $sSummary,
-				'messageCount' => 1 // Por ahora solo 1 mensaje
+				'messageCount' => 1, // Por ahora solo 1 mensaje
+				'fromCache' => $bFromCache
 			]);
 
 		} catch (\Throwable $e) {
@@ -264,6 +327,78 @@ class AiOverviewPlugin extends \RainLoop\Plugins\AbstractPlugin
 			}
 			return $sResponse;
 		}
+	}
+
+	/**
+	 * Genera una clave única para la cache basada en el email del usuario y el MessageId
+	 */
+	private function getCacheKey(\RainLoop\Model\Account $oAccount, string $sMessageId) : string
+	{
+		$sUserEmail = $oAccount->Email();
+		// Usar hash para crear una clave única y segura
+		return 'ai-overview-' . \md5($sUserEmail . '-' . $sMessageId);
+	}
+
+	/**
+	 * Obtiene el resumen desde la cache
+	 */
+	private function getCachedSummary(\RainLoop\Model\Account $oAccount, string $sCacheKey) : string
+	{
+		try {
+			$oStorage = $this->Manager()->Actions()->StorageProvider();
+			$sCached = $oStorage->Get($oAccount, StorageType::CONFIG, $sCacheKey, '');
+			
+			if ($this->isDebugEnabled()) {
+				\SnappyMail\Log::info('AI_OVERVIEW', "getCachedSummary - Key: {$sCacheKey}, Cached length: " . \strlen($sCached));
+			}
+			
+			if (!empty($sCached)) {
+				// Verificar que el contenido sea válido (no esté corrupto)
+				$aData = \json_decode($sCached, true);
+				if (\json_last_error() === JSON_ERROR_NONE && isset($aData['summary']) && isset($aData['timestamp'])) {
+					if ($this->isDebugEnabled()) {
+						\SnappyMail\Log::info('AI_OVERVIEW', "Cache válida encontrada - Summary length: " . \strlen($aData['summary']));
+					}
+					return $aData['summary'];
+				} else {
+					if ($this->isDebugEnabled()) {
+						\SnappyMail\Log::warning('AI_OVERVIEW', "Cache corrupta o inválida - JSON error: " . \json_last_error_msg());
+					}
+				}
+			} else {
+				if ($this->isDebugEnabled()) {
+					\SnappyMail\Log::info('AI_OVERVIEW', "No se encontró cache para la clave: {$sCacheKey}");
+				}
+			}
+		} catch (\Throwable $e) {
+			if ($this->isDebugEnabled()) {
+				\SnappyMail\Log::error('AI_OVERVIEW', "Error al obtener cache: " . $e->getMessage());
+			}
+		}
+		
+		return '';
+	}
+
+	/**
+	 * Guarda el resumen en la cache
+	 */
+	private function saveCachedSummary(\RainLoop\Model\Account $oAccount, string $sCacheKey, string $sSummary) : bool
+	{
+		$oStorage = $this->Manager()->Actions()->StorageProvider();
+		
+		// Guardar con timestamp para posible expiración futura
+		$aCacheData = [
+			'summary' => $sSummary,
+			'timestamp' => \time()
+		];
+		
+		$sCacheData = \json_encode($aCacheData);
+		
+		if ($this->isDebugEnabled()) {
+			\SnappyMail\Log::info('AI_OVERVIEW', "Guardando resumen en cache - Key: {$sCacheKey}");
+		}
+		
+		return $oStorage->Put($oAccount, StorageType::CONFIG, $sCacheKey, $sCacheData);
 	}
 
 }

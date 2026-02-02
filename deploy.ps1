@@ -16,7 +16,8 @@ Write-Host ""
 $customPlugins = @(
     "login-google-saludplus",
     "mark-external",
-    "ai-overview"
+    "ai-overview",
+    "unread-notification"
 )
 
 # 1. Limpiar cache
