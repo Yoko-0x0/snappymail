@@ -41,6 +41,7 @@
 }
 
 .ai-overview-toggle {
+	display: none !important;
 	background: none !important;
 	border: none !important;
 	outline: none !important;
@@ -86,6 +87,10 @@
 	padding: 8px 0;
 }
 
+.ai-overview-loading-text {
+	font-weight: 500;
+}
+
 .ai-overview-loading .spinner {
 	width: 20px;
 	height: 20px;
@@ -97,6 +102,39 @@
 
 @keyframes spin {
 	to { transform: rotate(360deg); }
+}
+
+/* Borde estilo IA: barra inferior arcoíris animada (como búsqueda IA / Gemini) */
+.ai-overview-container.ai-overview-loading-border {
+	position: relative;
+}
+
+.ai-overview-container.ai-overview-loading-border::after {
+	content: '';
+	position: absolute;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	height: 4px;
+	border-radius: 0 0 8px 8px;
+	/* Gradiente arcoíris: rojo, naranja, amarillo, verde, azul, violeta */
+	background: linear-gradient(
+		90deg,
+		#e53935,
+		#ff9800,
+		#fdd835,
+		#43a047,
+		#1e88e5,
+		#8e24aa,
+		#e53935
+	);
+	background-size: 200% 100%;
+	animation: aiRainbowMove 2s linear infinite;
+}
+
+@keyframes aiRainbowMove {
+	0% { background-position: 0 0; }
+	100% { background-position: -200% 0; }
 }
 
 /* Bullets list */

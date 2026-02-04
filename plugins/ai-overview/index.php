@@ -19,7 +19,9 @@ class AiOverviewPlugin extends \RainLoop\Plugins\AbstractPlugin
 	{
 		// Agregar endpoint personalizado para obtener resumen
 		$this->addJsonHook('AiOverview', 'ServiceAiOverview');
-		
+		$this->addJsonHook('AiOverviewClearCache', 'ServiceAiOverviewClearCache');
+		$this->addJsonHook('AiOverviewGetCached', 'ServiceAiOverviewGetCached');
+
 		// Agregar archivos JS y CSS
 		$this->addJs('ai-overview-ui.js');
 		$this->addCss('ai-overview.css');
@@ -208,6 +210,77 @@ class AiOverviewPlugin extends \RainLoop\Plugins\AbstractPlugin
 		}
 	}
 
+	/**
+	 * Borra la caché del resumen para un mensaje (llamado al colapsar manualmente).
+	 */
+	public function ServiceAiOverviewClearCache() : array
+	{
+		$oActions = $this->Manager()->Actions();
+		$oAccount = $oActions->getAccountFromToken(false);
+
+		if (!$oAccount) {
+			return $this->jsonResponse(__FUNCTION__, ['Error' => 'No autenticado']);
+		}
+
+		$sMessageId = (string) $this->jsonParam('MessageId', '');
+		if (empty($sMessageId)) {
+			return $this->jsonResponse(__FUNCTION__, ['Error' => 'MessageId vacío']);
+		}
+
+		try {
+			$sCacheKey = $this->getCacheKey($oAccount, $sMessageId);
+			$bCleared = $this->Manager()->Actions()->StorageProvider()->Clear($oAccount, StorageType::CONFIG, $sCacheKey);
+
+			if ($this->isDebugEnabled()) {
+				\SnappyMail\Log::info('AI_OVERVIEW', "Cache borrada para MessageId: {$sMessageId}, resultado: " . ($bCleared ? 'ok' : 'no encontrada'));
+			}
+
+			return $this->jsonResponse(__FUNCTION__, ['success' => $bCleared]);
+		} catch (\Throwable $e) {
+			if ($this->isDebugEnabled()) {
+				\SnappyMail\Log::error('AI_OVERVIEW', 'Error al borrar cache: ' . $e->getMessage());
+			}
+			$this->Manager()->WriteException((string) $e, \LOG_ERR);
+			return $this->jsonResponse(__FUNCTION__, ['Error' => 'Error al borrar cache: ' . $e->getMessage()]);
+		}
+	}
+
+	/**
+	 * Devuelve el resumen desde caché si existe (sin llamar al webhook). Para mostrar abierto cuando hay cache.
+	 */
+	public function ServiceAiOverviewGetCached() : array
+	{
+		$oActions = $this->Manager()->Actions();
+		$oAccount = $oActions->getAccountFromToken(false);
+
+		if (!$oAccount) {
+			return $this->jsonResponse(__FUNCTION__, ['fromCache' => false]);
+		}
+
+		if (!$this->Config()->Get('plugin', 'use_cache', true)) {
+			return $this->jsonResponse(__FUNCTION__, ['fromCache' => false]);
+		}
+
+		$sMessageId = (string) $this->jsonParam('MessageId', '');
+		if (empty($sMessageId)) {
+			return $this->jsonResponse(__FUNCTION__, ['fromCache' => false]);
+		}
+
+		try {
+			$sCacheKey = $this->getCacheKey($oAccount, $sMessageId);
+			$sSummary = $this->getCachedSummary($oAccount, $sCacheKey);
+
+			if (!empty($sSummary)) {
+				return $this->jsonResponse(__FUNCTION__, ['summary' => $sSummary, 'fromCache' => true]);
+			}
+		} catch (\Throwable $e) {
+			if ($this->isDebugEnabled()) {
+				\SnappyMail\Log::error('AI_OVERVIEW', 'Error al obtener cache: ' . $e->getMessage());
+			}
+		}
+
+		return $this->jsonResponse(__FUNCTION__, ['fromCache' => false]);
+	}
 
 	/**
 	 * Hacer petición al webhook de IA

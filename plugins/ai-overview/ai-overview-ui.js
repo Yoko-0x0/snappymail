@@ -31,18 +31,18 @@
 
 			// Insertar el panel AI Overview después del header
 			messageItemHeader.after(Element.fromHTML(`
-				<div class="ai-overview-container" style="display:none !important;">
+				<div class="ai-overview-container collapsed" style="display:none !important;">
 					<div class="ai-overview-header">
 						<span class="ai-overview-icon">
 						<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-subtitles-ai"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M11.5 19h-5.5a3 3 0 0 1 -3 -3v-8a3 3 0 0 1 3 -3h12a3 3 0 0 1 3 3v4" /><path d="M7 15h5" /><path d="M17 12h-3" /><path d="M11 12h-1" /><path d="M19 22.5a4.75 4.75 0 0 1 3.5 -3.5a4.75 4.75 0 0 1 -3.5 -3.5a4.75 4.75 0 0 1 -3.5 3.5a4.75 4.75 0 0 1 3.5 3.5" /></svg>
 						</span>
-						<span class="ai-overview-title">Resumen AI</span>
-						<button class="ai-overview-toggle" title="Expandir/Colapsar">▲</button>
+						<span class="ai-overview-title">Resumir este correo electrónico</span>
+						<button class="ai-overview-toggle" title="Expandir/Colapsar">▼</button>
 					</div>
-					<div class="ai-overview-content">
+					<div class="ai-overview-content" style="display:none;">
 						<div class="ai-overview-loading">
 							<div class="spinner"></div>
-							<span>Generando resumen...</span>
+							<span class="ai-overview-loading-text">Generando Resumen General</span>
 						</div>
 						<ul class="ai-overview-bullets" style="display:none;"></ul>
 						<div class="ai-overview-error" style="display:none;"></div>
@@ -54,93 +54,90 @@
 				console.log('AI Overview - Panel agregado al template');
 			}
 
-			// Solicitar resumen cuando se carga un mensaje
+			// Estado por mensaje: resumen en memoria y messageId actual
+			let state = { messageId: '', summary: '' };
+			let currentMsg = null;
+
+			// Delegación de clic: el template se clona al renderizar, el listener va en document
+			setupToggleDelegation(state, () => currentMsg);
+
+			// Al cambiar de mensaje: mostrar panel colapsado, sin auto-solicitar resumen
 			view.message.subscribe(msg => {
-				// Ocultar el panel inmediatamente al cambiar de mensaje
 				const container = document.querySelector('.ai-overview-container');
-				if (container) {
-					container.style.display = 'none';
-				}
+				if (!container) return;
+
+				container.style.display = 'none';
+				container.classList.remove('ai-overview-loading-border');
 
 				if (msg) {
-					// Verificar PRIMERO si el mensaje tiene hilo antes de cargar el cuerpo
-					if (!hasThread(msg)) {
-						// No tiene hilo, no hacer nada más
-						if (isDebugEnabled()) {
-							console.log('AI Overview - Mensaje sin hilo, no se mostrará resumen');
-						}
-						return;
-					}
+					state.messageId = getMessageId(msg);
+					state.summary = '';
+					currentMsg = msg;
+					container.dataset.messageId = state.messageId;
 
-					// Configurar toggle
-					setTimeout(() => {
-						setupToggle();
-					}, 100);
+					// Panel visible; por defecto colapsado hasta saber si hay cache
+					container.style.display = 'block';
+					container.style.setProperty('display', 'block', 'important');
+					const content = container.querySelector('.ai-overview-content');
+					const toggle = container.querySelector('.ai-overview-toggle');
+					if (content) content.style.display = 'none';
+					if (toggle) toggle.textContent = '▼';
+					container.classList.add('collapsed');
 
-					// Esperar a que el cuerpo del mensaje esté disponible
-					// El cuerpo puede tardar un momento en cargarse
-					const checkBodyLoaded = () => {
-						// Intentar obtener el contenido del mensaje
-						const bodyElement = msg.body || document.querySelector(`#rl-msg-${msg.hash}`);
-						const plainText = msg.plain && typeof msg.plain === 'function' ? msg.plain() : (msg.plain || '');
-						const htmlText = msg.html && typeof msg.html === 'function' ? msg.html() : (msg.html || '');
+					const loading = container.querySelector('.ai-overview-loading');
+					const bullets = container.querySelector('.ai-overview-bullets');
+					const error = container.querySelector('.ai-overview-error');
+					if (loading) loading.style.display = 'none';
+					if (bullets) bullets.style.display = 'none';
+					if (error) error.style.display = 'none';
 
-						if (bodyElement || plainText || htmlText) {
-							// Ya verificamos que tiene hilo, ahora solicitar resumen
-							requestAiSummary(msg);
-						} else {
-							// Esperar un poco más y volver a intentar
-							setTimeout(checkBodyLoaded, 200);
-						}
-					};
-
-					// Iniciar verificación después de un pequeño delay
-					setTimeout(checkBodyLoaded, 300);
+					// Si hay cache, abrir el panel y mostrar el resumen
+					rl.pluginRemoteRequest(
+						(iErr, oData) => {
+							if (iErr || !oData?.Result?.fromCache || !oData?.Result?.summary) return;
+							const summary = oData.Result.summary;
+							state.summary = summary;
+							if (content) content.style.display = 'block';
+							if (toggle) toggle.textContent = '▲';
+							container.classList.remove('collapsed');
+							showSummary(container, summary, 1);
+						},
+						'AiOverviewGetCached',
+						{ MessageId: state.messageId },
+						5000
+					);
 				}
 			});
 		}
 	});
 
-
-	/**
-	 * Verificar si el mensaje tiene hilo (es parte de una conversación)
-	 */
-	function hasThread(msg) {
-		// Obtener configuración del plugin
-		const minMessages = rl.pluginSettingsGet('ai-overview', 'min_messages') || 2;
-		
-		// Si minMessages es 1, siempre mostrar (se considera que tiene hilo)
-		if (minMessages === 1) {
-			return true;
-		}
-		
-		// Verificar si el mensaje tiene inReplyTo (indica que es parte de un hilo)
-		const inReplyTo = msg.inReplyTo && typeof msg.inReplyTo === 'function' ? msg.inReplyTo() : (msg.inReplyTo || '');
-		
-		// Verificar threads si está disponible
-		const threads = msg.threads && typeof msg.threads === 'function' ? msg.threads() : (msg.threads || []);
-		const threadCount = Array.isArray(threads) ? threads.length : 0;
-		
-		// Tiene hilo si tiene inReplyTo (es una respuesta) o tiene threads
-		return !!inReplyTo || threadCount >= minMessages;
+	function getMessageId(msg) {
+		return msg.hash || (msg.folder && msg.uid ? `${msg.folder}_${msg.uid}` : '');
 	}
 
 	/**
-	 * Solicitar resumen de IA
+	 * Solicitar resumen de IA (solo al clic; muestra "Generando Resumen General" y borde animado).
 	 */
-	function requestAiSummary(msg) {
-		const container = document.querySelector('.ai-overview-container');
+	function requestAiSummary(msg, container, state) {
+		if (!container) container = document.querySelector('.ai-overview-container');
 		if (!container) return;
 
 		const loading = container.querySelector('.ai-overview-loading');
+		const loadingText = container.querySelector('.ai-overview-loading-text');
 		const bullets = container.querySelector('.ai-overview-bullets');
 		const error = container.querySelector('.ai-overview-error');
+
+		if (loadingText) loadingText.textContent = 'Generando Resumen General';
+		container.classList.add('ai-overview-loading-border');
+		if (loading) loading.style.display = 'flex';
+		if (bullets) bullets.style.display = 'none';
+		if (error) error.style.display = 'none';
 
 		// Recopilar información del mensaje desde el frontend
 		let messageData = '';
 		let messageId = '';
 		let threadCount = 1;
-		
+
 		try {
 			// Obtener información del mensaje
 			// msg.from es un EmailCollectionModel, no una función
@@ -252,6 +249,7 @@
 			if (isDebugEnabled()) {
 				console.error('AI Overview - Error al recopilar datos del mensaje:', err);
 			}
+			container.classList.remove('ai-overview-loading-border');
 			showError(container, 'Error al obtener información del mensaje');
 			return;
 		}
@@ -260,61 +258,56 @@
 			if (isDebugEnabled()) {
 				console.warn('AI Overview - Datos del mensaje insuficientes');
 			}
+			container.classList.remove('ai-overview-loading-border');
 			showError(container, 'No se pudo obtener información suficiente del mensaje');
 			return;
 		}
 
-		// Mostrar contenedor y loading (solo si tiene hilo)
-		container.style.display = 'block';
-		container.style.setProperty('display', 'block', 'important');
-		if (loading) loading.style.display = 'flex';
-		if (bullets) bullets.style.display = 'none';
-		if (error) error.style.display = 'none';
+		rl.pluginRemoteRequest(
+			(iError, oData) => {
+				container.classList.remove('ai-overview-loading-border');
 
-		// Hacer petición al backend enviando los datos del mensaje
-			rl.pluginRemoteRequest(
-				(iError, oData) => {
-					if (iError) {
-						if (isDebugEnabled()) {
-							console.error('AI Overview - Error:', iError, oData);
-						}
-						showError(container, oData?.ErrorMessage || 'Error al obtener resumen');
-						return;
-					}
-
+				if (iError) {
 					if (isDebugEnabled()) {
-						console.log('AI Overview - Respuesta:', oData);
-						console.log('AI Overview - Result:', oData?.Result);
+						console.error('AI Overview - Error:', iError, oData);
 					}
+					showError(container, oData?.ErrorMessage || 'Error al obtener resumen');
+					return;
+				}
 
-					// Intentar diferentes estructuras de respuesta
-					if (oData?.Result?.summary) {
-						const summary = oData.Result.summary;
-						const messageCount = oData.Result.messageCount || 1;
-						showSummary(container, summary, messageCount);
-					} else if (oData?.Result?.Error) {
-						if (isDebugEnabled()) {
-							console.warn('AI Overview - Error del servidor:', oData.Result.Error);
-						}
-						showError(container, oData.Result.Error);
-					} else {
-						if (isDebugEnabled()) {
-							console.warn('AI Overview - Estructura de respuesta no reconocida:', {
-								hasResult: !!oData?.Result,
-								resultKeys: oData?.Result ? Object.keys(oData.Result) : [],
-								fullData: oData
-							});
-						}
-						showError(container, 'No se pudo obtener el resumen');
+				if (isDebugEnabled()) {
+					console.log('AI Overview - Respuesta:', oData);
+					console.log('AI Overview - Result:', oData?.Result);
+				}
+
+				if (oData?.Result?.summary) {
+					const summary = oData.Result.summary;
+					const messageCount = oData.Result.messageCount || 1;
+					if (state) state.summary = summary;
+					showSummary(container, summary, messageCount);
+				} else if (oData?.Result?.Error) {
+					if (isDebugEnabled()) {
+						console.warn('AI Overview - Error del servidor:', oData.Result.Error);
 					}
-				},
+					showError(container, oData.Result.Error);
+				} else {
+					if (isDebugEnabled()) {
+						console.warn('AI Overview - Estructura de respuesta no reconocida:', {
+							hasResult: !!oData?.Result,
+							resultKeys: oData?.Result ? Object.keys(oData.Result) : [],
+							fullData: oData
+						});
+					}
+					showError(container, 'No se pudo obtener el resumen');
+				}
+			},
 			'AiOverview',
 			{
 				'MessageData': messageData,
 				'MessageId': messageId,
 				'ThreadCount': threadCount
 			},
-			60000 // 60 segundos de timeout
+			60000
 		);
 	}
 
@@ -365,37 +358,58 @@
 	}
 
 	/**
-	 * Configurar toggle de expandir/colapsar
+	 * Delegación de clic en document: el panel está en un clon del template, así el clic se captura.
 	 */
-	function setupToggle() {
-		const container = document.querySelector('.ai-overview-container');
-		if (!container) return;
+	function setupToggleDelegation(state, getCurrentMsg) {
+		if (document.body.dataset.aiOverviewDelegation) return;
+		document.body.dataset.aiOverviewDelegation = 'true';
 
-		const header = container.querySelector('.ai-overview-header');
-		const toggle = container.querySelector('.ai-overview-toggle');
-		const content = container.querySelector('.ai-overview-content');
+		document.body.addEventListener('click', (e) => {
+			const header = e.target.closest('.ai-overview-header');
+			if (!header) return;
 
-		if (!header || !toggle || !content) return;
+			const container = header.closest('.ai-overview-container');
+			if (!container) return;
 
-		// Solo configurar si no está ya configurado
-		if (header.dataset.toggleConfigured) return;
+			const toggle = container.querySelector('.ai-overview-toggle');
+			const content = container.querySelector('.ai-overview-content');
+			if (!toggle || !content) return;
 
-		header.dataset.toggleConfigured = 'true';
-
-		// Agregar event listener para toggle
-		header.addEventListener('click', (e) => {
 			e.preventDefault();
 			e.stopPropagation();
-			
-			const isCollapsed = content.style.display === 'none';
-			content.style.display = isCollapsed ? 'block' : 'none';
-			toggle.textContent = isCollapsed ? '▲' : '▼';
-			container.classList.toggle('collapsed', !isCollapsed);
-		});
 
-		if (isDebugEnabled()) {
-			console.log('AI Overview - Toggle configurado');
-		}
+			const isCollapsed = content.style.display === 'none';
+
+			if (isCollapsed) {
+				content.style.display = 'block';
+				toggle.textContent = '▲';
+				container.classList.remove('collapsed');
+
+				if (state.summary) {
+					showSummary(container, state.summary, 1);
+				} else {
+					const msg = getCurrentMsg();
+					if (msg) {
+						requestAiSummary(msg, container, state);
+					}
+				}
+			} else {
+				content.style.display = 'none';
+				toggle.textContent = '▼';
+				container.classList.add('collapsed');
+				container.classList.remove('ai-overview-loading-border');
+
+				if (state.messageId) {
+					rl.pluginRemoteRequest(
+						() => {},
+						'AiOverviewClearCache',
+						{ MessageId: state.messageId },
+						5000
+					);
+				}
+				state.summary = '';
+			}
+		});
 	}
 
 })(window.rl);
