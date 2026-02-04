@@ -69,22 +69,20 @@
 	position: relative;
 }
 
-/* Icono de email en esquina superior izquierda de la página */
-#V-Login::before {
+#rl-app .LoginView form {
+	box-shadow: none !important;
+}
+
+/* Logo de SaludPlus arriba del botón "Nuevo mensaje" en el panel izquierdo */
+#rl-left .b-folders::before {
 	content: '';
-	position: relative;
-	top: 84px;
-    left: -142px;
-    width: 28px;
-    height: 28px;
-	background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23EA4335'%3E%3Cpath d='M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z'/%3E%3C/svg%3E");
+	display: block;
+	width: 100%;
+	height: 60px;
+	margin-bottom: 10px;
+	background-image: url('/snappymail/v/0.0.0/static/images/logo-color.png');
 	background-size: contain;
 	background-repeat: no-repeat;
 	background-position: center;
-	z-index: 1000;
-}
-
-
-#rl-app .LoginView form {
-	box-shadow: none !important;
+	flex-shrink: 0;
 }
